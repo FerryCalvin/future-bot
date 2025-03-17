@@ -41,14 +41,21 @@ def fetch_ohlcv(symbol="BTCUSDT", interval="1", limit=200, verify_ssl=True):
                 if not raw_candles:
                     logging.error("❌ Received empty OHLCV data.")
                     return None
-                # Convert to DataFrame (expecting 7 columns)
+                # Convert to DataFrame (Bybit returns 7 columns)
                 df = pd.DataFrame(raw_candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'turnover'])
                 # Convert 'timestamp' column to numeric (coerce errors), then drop invalid rows
                 df['timestamp'] = pd.to_numeric(df['timestamp'], errors='coerce')
-                df = df.dropna(subset=['timestamp'])
-                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                # Convert other numeric columns similarly
                 numeric_cols = ['open', 'high', 'low', 'close', 'volume', 'turnover']
-                df[numeric_cols] = df[numeric_cols].astype(float)
+                for col in numeric_cols:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                # Drop rows with NaN in any of the required columns
+                df = df.dropna(subset=['timestamp'] + numeric_cols)
+                # Now convert timestamp to datetime
+                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                if df.empty:
+                    logging.error("❌ Received empty OHLCV data after cleaning.")
+                    return None
                 logging.info(f"✅ Successfully fetched {len(df)} OHLCV data points for {symbol} ({interval} minute candles)")
                 return df
             else:

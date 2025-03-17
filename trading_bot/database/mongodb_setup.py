@@ -11,7 +11,7 @@ ORDERBOOK_COLLECTION = "orderbook"
 
 def get_database():
     """
-    Connects to MongoDB and returns the database reference.
+    Connects to MongoDB and returns the database reference and client.
     """
     try:
         client = MongoClient(MONGO_URI)
@@ -25,8 +25,8 @@ def get_database():
 def save_ohlcv(data, symbol="BTCUSDT", interval="1"):
     """
     Saves OHLCV data to MongoDB.
-    
-    :param data: List of candlesticks from Bybit API.
+
+    :param data: DataFrame containing candlestick data.
     :param symbol: Trading pair.
     :param interval: Timeframe interval.
     """
@@ -34,26 +34,34 @@ def save_ohlcv(data, symbol="BTCUSDT", interval="1"):
     if db is None:
         logging.error("❌ No database connection.")
         return
-    
+
     collection = db[OHLCV_COLLECTION]
 
-    # Format data before saving
     formatted_data = []
-    for candle in data:
-        formatted_data.append({
+    # Iterate over DataFrame rows
+    for idx, row in data.iterrows():
+        try:
+            # Convert the pandas Timestamp to integer (milliseconds)
+            ts = int(row['timestamp'].timestamp() * 1000)
+        except Exception as e:
+            logging.error(f"❌ Error converting timestamp: {e}")
+            continue
+
+        record = {
             "symbol": symbol,
             "interval": interval,
-            "timestamp": int(candle[0]),  # Timestamp
-            "open": float(candle[1]),
-            "high": float(candle[2]),
-            "low": float(candle[3]),
-            "close": float(candle[4]),
-            "volume": float(candle[5])
-        })
+            "timestamp": ts,
+            "open": float(row["open"]),
+            "high": float(row["high"]),
+            "low": float(row["low"]),
+            "close": float(row["close"]),
+            "volume": float(row["volume"])
+        }
+        formatted_data.append(record)
 
     if formatted_data:
         try:
-            # Use bulk insert with upsert to avoid duplicates
+            # Insert records with upsert to avoid duplicates
             for record in formatted_data:
                 collection.update_one(
                     {"symbol": record["symbol"], "interval": record["interval"], "timestamp": record["timestamp"]},
@@ -69,7 +77,7 @@ def save_ohlcv(data, symbol="BTCUSDT", interval="1"):
 def save_orderbook(data, symbol="BTCUSDT"):
     """
     Saves Order Book data to MongoDB.
-    
+
     :param data: Order book data from Bybit API.
     :param symbol: Trading pair.
     """
@@ -77,23 +85,27 @@ def save_orderbook(data, symbol="BTCUSDT"):
     if db is None:
         logging.error("❌ No database connection.")
         return
-    
+
     collection = db[ORDERBOOK_COLLECTION]
-    
+
     # Ensure required keys exist
     if "ts" not in data or "b" not in data or "a" not in data:
         logging.error("❌ Invalid order book data format.")
         return
 
-    orderbook_entry = {
-        "symbol": symbol,
-        "timestamp": int(data["ts"]),
-        "bids": data["b"],  # List of bid orders
-        "asks": data["a"]   # List of ask orders
-    }
+    try:
+        record = {
+            "symbol": symbol,
+            "timestamp": int(data["ts"]),
+            "bids": data["b"],
+            "asks": data["a"]
+        }
+    except Exception as e:
+        logging.error(f"❌ Error processing order book data: {e}")
+        return
 
     try:
-        collection.insert_one(orderbook_entry)
+        collection.insert_one(record)
         logging.info(f"✅ Inserted Order Book data for {symbol}")
     except Exception as e:
         logging.error(f"❌ Failed to insert Order Book data: {e}")
@@ -102,13 +114,13 @@ def save_orderbook(data, symbol="BTCUSDT"):
 
 # Example usage
 if __name__ == "__main__":
-    from data_fetcher.fetch_ohlcv import fetch_ohlcv
-    from data_fetcher.fetch_orderbook import fetch_orderbook
+    from trading_bot.data_fetcher.fetch_ohlcv import fetch_ohlcv
+    from trading_bot.data_fetcher.fetch_orderbook import fetch_orderbook
 
     # Save OHLCV data
-    candles = fetch_ohlcv("BTCUSDT", "1", 10)
-    if candles:
-        save_ohlcv(candles, "BTCUSDT", "1")
+    df = fetch_ohlcv("BTCUSDT", "1", 10)
+    if df is not None and not df.empty:
+        save_ohlcv(df, "BTCUSDT", "1")
 
     # Save Order Book data
     orderbook = fetch_orderbook("BTCUSDT", 10)
