@@ -18,8 +18,8 @@ if not BYBIT_API_KEY or not BYBIT_SECRET_KEY:
     raise ValueError("❌ API Key and Secret Key not found! Ensure they are set in .env.")
 
 # Database Configuration (Default values provided)
-MONGO_URI = os.getenv("MONGO_URI", "your mongo uri")
-DB_NAME = os.getenv("DB_NAME", "your database name")
+MONGO_URI = os.getenv("MONGO_URI")
+DB_NAME = os.getenv("DB_NAME")
 
 # Bybit API Endpoints
 BYBIT_MAINNET_URL = "https://api.bybit.com"
